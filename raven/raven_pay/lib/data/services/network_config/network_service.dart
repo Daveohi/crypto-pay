@@ -6,7 +6,7 @@ import '../../models/errors/failure.dart';
 import 'network_interceptors.dart';
 
 String get _baseUrl {
-  return "";
+  return "Api base url";
 }
 
 Dio _createDio() {
@@ -18,7 +18,10 @@ Dio _createDio() {
       receiveTimeout: const Duration(seconds: 60),
       connectTimeout: const Duration(seconds: 60),
       sendTimeout: const Duration(seconds: 60),
-      headers: {},
+      headers: {
+        // "Authorization": "Bearer $_accessToken",
+        // "Content-Type": "application/json",
+      },
     ),
   );
 

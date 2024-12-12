@@ -53,6 +53,12 @@ class HomeController extends GetxController with GlobalController {
     super.onInit();
   }
 
+  @override
+  void onClose() {
+    channel?.sink.close();
+    super.onClose();
+  }
+
   // ENTRY POINT
   // Get the symbols, then get the candles and if they are not available,
   //then initialize websocket and get needed data
@@ -107,13 +113,20 @@ class HomeController extends GetxController with GlobalController {
         symbol: symbol.symbol,
         interval: interval.toLowerCase(),
       );
+      if (candles.isEmpty) {
+        _logger.e("Candles data is empty");
+        // return candles;
+      }
       candles.value = result;
       _logger.d("Candles Length :: ${candles.length}");
       moduleState.value = ModuleState.idle;
       candleLoading.value = false;
       return result;
     } on Failure catch (e) {
-      moduleState.value = ModuleState.error;
+      if (moduleState.value == ModuleState.error) {
+        Get.snackbar("Error", moduleError.value.message);
+      }
+      // moduleState.value = ModuleState.error;
       // moduleError.value = e;
       _logger.e(e.message);
       candleLoading.value = false;
@@ -134,6 +147,10 @@ class HomeController extends GetxController with GlobalController {
     required String symbol,
     required String interval,
   }) async {
+    if (channel != null) {
+      channel?.sink.close();
+    }
+
     _logger.d("Initializing websocket..");
     websocketLoading.value = true;
 
@@ -142,28 +159,33 @@ class HomeController extends GetxController with GlobalController {
       symbol: symbol.toLowerCase(),
     );
 
-    await for (final String value in chn.stream) {
-      final map = jsonDecode(value) as Map<String, dynamic>;
-      final eventType = map['e'];
+    try {
+      await for (final String value in chn.stream) {
+        final map = jsonDecode(value) as Map<String, dynamic>;
+        final eventType = map['e'];
 
-      if (eventType == KLINE) {
-        final candleTickerInfo = CandleTickerModel.fromJson(map);
-        candleTicker.value = candleTickerInfo;
-        if (candles.isNotEmpty &&
-            candles[0].date == candleTicker.value!.candle.date &&
-            candles[0].open == candleTickerInfo.candle.open) {
-          candles[0] = candleTickerInfo.candle;
-        } else if (candles.isNotEmpty &&
-            candleTicker.value!.candle.date.difference(candles[0].date) ==
-                candles[0].date.difference(candles[1].date)) {
-          candles.insert(0, candleTicker.value!.candle);
+        if (eventType == KLINE) {
+          final candleTickerInfo = CandleTickerModel.fromJson(map);
+          candleTicker.value = candleTickerInfo;
+          if (candles.isNotEmpty &&
+              candles[0].date == candleTicker.value!.candle.date &&
+              candles[0].open == candleTickerInfo.candle.open) {
+            candles[0] = candleTickerInfo.candle;
+          } else if (candles.isNotEmpty &&
+              candleTicker.value!.candle.date.difference(candles[0].date) ==
+                  candles[0].date.difference(candles[1].date)) {
+            candles.insert(0, candleTicker.value!.candle);
+          }
+        } else if (eventType == DEPTH_UPDATE) {
+          final orderBookInfo = OrderBook.fromMap(map);
+          orderBooks.value = orderBookInfo;
         }
-      } else if (eventType == DEPTH_UPDATE) {
-        final orderBookInfo = OrderBook.fromMap(map);
-        orderBooks.value = orderBookInfo;
       }
+      websocketLoading.value = false;
+    } catch (e) {
+      websocketLoading.value = false;
+      _logger.e("WebSocket Error: $e");
     }
-    websocketLoading.value = false;
   }
 
   // TO LOAD MORE CANDLES
